@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Datelike, Duration, Utc};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use retainer::Cache;
@@ -66,9 +66,6 @@ impl RawEventHandler for ReportHandler {
                         }
                     })
                 }).unwrap());
-                scd.add(Job::new_async("* 1/45 * * * * *", |_uuid, _lock| Box::pin(async move {
-
-                })).unwrap());
                 Instant::t_name("Scheduler").out("Info", yansi::Color::Cyan, format!("Built"));
                 tokio::spawn(scd.start());
                 return;
