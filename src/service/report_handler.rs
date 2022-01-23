@@ -79,7 +79,7 @@ impl RawEventHandler for ReportHandler {
             },
             Event::MessageCreate(m) => {
                 let channel = *REPORT_CHANNEL;
-                if !m.message.author.bot && (m.message.content == ALIVE_COMMAND || m.message.channel_id == channel) {
+                if !m.message.author.bot && (m.message.content == ALIVE_COMMAND && m.message.channel_id == channel) {
                     if let Err(e) = channel.say(&*ctx_http.clone(), ":white_check_mark: Alive").await {
                         Instant::t_name("Cmd [Alive]").out("Error", yansi::Color::Red, format!("Cannot send cmd msg.: {:?}", e))
                     }
