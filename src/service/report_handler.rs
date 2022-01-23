@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use chrono::{Datelike, Duration, Utc};
+use chrono::{Datelike, Duration, Local, Utc};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use retainer::Cache;
@@ -58,9 +58,11 @@ impl RawEventHandler for ReportHandler {
                         let report = *REPORT_CHANNEL;
                         if cache.get(&"report").await.is_none() {
                             if let Some(tweet) = on_report(ctx_http, report).await {
-                                let local = Utc::now().date().and_hms(0, 0, 0);
+                                let local = Local::now().date().and_hms(0, 0, 0);
+                                Instant::t_name("Report").out("Info", yansi::Color::Cyan, format!("Report to {}", &local));
                                 let tomorrow = local + Duration::days(1);
-                                let count = tomorrow - Utc::now();
+                                Instant::t_name("Scheduled").out("Info", yansi::Color::Cyan, format!("Next Report to {}", &tomorrow));
+                                let count = tomorrow - Local::now();
                                 cache.insert("report", tweet, count.to_std().unwrap()).await;
                             }
                         }
