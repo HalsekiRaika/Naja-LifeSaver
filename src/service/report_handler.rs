@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use chrono::{Datelike, DateTime, Duration, Timelike, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use retainer::Cache;
 use serenity::client::{Context, RawEventHandler};
 use serenity::http::Http;
 use serenity::model::event::Event;
@@ -23,7 +25,7 @@ static REPORT_CHANNEL: Lazy<ChannelId> = Lazy::new(|| {
 });
 static TWITTER_API: Lazy<String> = Lazy::new(|| {
     dotenv::var("SURVEILLANCE_TARGET").ok()
-        .and_then(|s| Some(format!("https://api.twitter.com/2/tweets/search/recent?tweet.fields=created_at&query=from:{}", s)))
+        .and_then(|s| Some(format!("https://api.twitter.com/2/tweets/search/recent?max_results=50&tweet.fields=created_at&query=from:{}", s)))
         .unwrap_or(String::from("Najaran3"))
 });
 static TWITTER_API_TOKEN: Lazy<String> = Lazy::new(|| {
@@ -43,26 +45,39 @@ impl RawEventHandler for ReportHandler {
         let ctx_http = Arc::clone(&ctx.http);
         match ev {
             Event::Ready(a) => {
+                let cache    = Arc::new(Cache::new());
+                let cache_c  = cache.clone();
+                tokio::spawn(async move {
+                    cache_c.monitor(4, 0.25, std::time::Duration::from_secs(3)).await
+                });
                 Instant::t_name("Login").out("Info", yansi::Color::Cyan, format!("Connected to {}", a.ready.user.name));
                 let mut scd  = JobScheduler::new();
-                let logger   = Logger::new(Some("Report"));
                 Instant::t_name("Scheduler").out("Info", yansi::Color::Cyan, format!("Build Schedule Task."));
-                scd.add(Job::new_async("* 0/59 * * * * *", move |_uuid, _lock| {
+                scd.add(Job::new_async("1/30 * * * * * *", move |_uuid, _lock| {
+                    let cache = cache.clone();
                     let ctx_http = ctx_http.clone();
-                    let logger   = logger.clone();
                     Box::pin(async move {
-                        logger.info("fire!");
                         let report = *REPORT_CHANNEL;
-                        on_report(ctx_http, report).await
+                        if cache.get(&"report").await.is_none() {
+                            if let Some(tweet) = on_report(ctx_http, report).await {
+                                let local = Utc::now().date().and_hms(0, 0, 0);
+                                let tomorrow = local + Duration::days(1);
+                                let count = tomorrow - Utc::now();
+                                cache.insert("report", tweet, count.to_std().unwrap()).await;
+                            }
+                        }
                     })
                 }).unwrap());
+                scd.add(Job::new_async("* 1/45 * * * * *", |_uuid, _lock| Box::pin(async move {
+
+                })).unwrap());
                 Instant::t_name("Scheduler").out("Info", yansi::Color::Cyan, format!("Built"));
                 tokio::spawn(scd.start());
                 return;
             },
             Event::Resumed(r) => {
                 for trace in r.trace {
-                    Instant::t_name("Connect Resume")
+                    Instant::t_name("Cnt Resume")
                         .out("Info", yansi::Color::Cyan, format!("Trace {}", trace.unwrap_or(String::from(""))));
                 }
                 return;
@@ -81,7 +96,7 @@ impl RawEventHandler for ReportHandler {
     }
 }
 
-async fn on_report(ctx_http: Arc<Http>, channel: ChannelId) {
+async fn on_report(ctx_http: Arc<Http>, channel: ChannelId) -> Option<String> {
     let client = &*HTTP_CLIENT;
     let res = client.get(&*TWITTER_API)
         .bearer_auth(&*TWITTER_API_TOKEN)
@@ -89,10 +104,12 @@ async fn on_report(ctx_http: Arc<Http>, channel: ChannelId) {
         .json::<TimeLine>()
         .await.unwrap();
     for tweet in res.get_tweet() {
-        if tweet.text.contains("#StillAliveNotify") {
-            if let Err(e) = channel.say(&ctx_http, format!("生存報告！{}{}", &*TWEET_URL, tweet.id)).await {
+        if tweet.text.contains("#StillAliveNotify") && tweet.created_at.day() == Utc::now().day() {
+            if let Err(e) = channel.say(&ctx_http, format!("生存報告！{}{}", &*TWEET_URL, &tweet.id)).await {
                 println!("Cannot send message! -- {:?}", e);
             };
+            return Some(tweet.id);
         }
     }
+    None
 }
