@@ -60,7 +60,7 @@ impl RawEventHandler for ReportHandler {
                             if let Some(tweet) = on_report(ctx_http, report).await {
                                 let local = Local::now().date().and_hms(0, 0, 0);
                                 Instant::t_name("Report").out("Info", yansi::Color::Cyan, format!("Report to {}", &local));
-                                let tomorrow = local + Duration::days(1);
+                                let tomorrow = local + Duration::days(1) + Duration::minutes(10);
                                 Instant::t_name("Scheduled").out("Info", yansi::Color::Cyan, format!("Next Report to {}", &tomorrow));
                                 let count = tomorrow - Local::now();
                                 cache.insert("report", tweet, count.to_std().unwrap()).await;
