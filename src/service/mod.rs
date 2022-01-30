@@ -1,4 +1,9 @@
+use std::fmt::Formatter;
+use std::marker::PhantomData;
+use std::str::FromStr;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Deserializer};
+use serde::de::{Error,Visitor};
 
 mod report_handler;
 
@@ -44,9 +49,13 @@ pub(crate) struct Tweet {
     created_at: DateTime<Utc>,
     #[serde(rename(deserialize = "id"))]
     id: String,
+    #[serde(deserialize_with = "must_string_contents")]
     #[serde(rename(deserialize = "text"))]
-    text: String
+    text: TextContents
 }
+
+#[derive(serde::Deserialize, Clone)]
+pub(crate) struct TextContents(pub String);
 
 #[allow(dead_code)]
 #[derive(serde::Deserialize)]
@@ -66,4 +75,34 @@ impl TimeLine {
     pub fn get_tweet(&self) -> Vec<Tweet> {
         self.data.clone().0
     }
+}
+
+impl FromStr for TextContents {
+    type Err = void::Void;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.to_string()))
+    }
+}
+
+pub(crate) fn must_string_contents<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+  where T: Deserialize<'de> + FromStr<Err = void::Void>,
+        D: Deserializer<'de>
+{
+    struct MustStringContents<T>(PhantomData<fn() -> T>);
+    impl<'de, T> Visitor<'de> for MustStringContents<T>
+      where T: Deserialize<'de> + FromStr<Err = void::Void>
+    {
+        type Value = T;
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            formatter.write_str("must string contents")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+          where E: Error
+        {
+            Ok(FromStr::from_str(v).unwrap())
+        }
+    }
+    deserializer.deserialize_any(MustStringContents(PhantomData))
 }

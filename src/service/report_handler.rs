@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use chrono::{Datelike, Duration, Local, Utc};
+use chrono::{Datelike, Duration, Local};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use retainer::Cache;
@@ -101,7 +101,7 @@ async fn on_report(ctx_http: Arc<Http>, channel: ChannelId) -> Option<String> {
         .json::<TimeLine>()
         .await.unwrap();
     for tweet in res.get_tweet() {
-        if tweet.text.contains("#StillAliveNotify") && tweet.created_at.day() == Local::now().day() {
+        if tweet.text.0.contains("#StillAliveNotify") && tweet.created_at.day() == Local::now().day() {
             if let Err(e) = channel.say(&ctx_http, format!("生存報告！{}{}", &*TWEET_URL, &tweet.id)).await {
                 println!("Cannot send message! -- {:?}", e);
             };
